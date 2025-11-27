@@ -1,13 +1,31 @@
 import React, { useState, useEffect } from 'react';
 import { Heart, Flame, Users, Clock, TrendingUp, Plus, Play, Pause, X, LogOut } from 'lucide-react';
 
-// ------------------------------------------------------------------
-// IMPORTAÇÕES REAIS DO FIREBASE
-import { db } from './firebaseConfig'; // Importa a instância que criamos
-import { ref, onValue, update } from 'firebase/database';
+// Simulação de Firebase para demonstração
+class MockFirebase {
+  constructor() {
+    this.data = {
+      experiences: [],
+      bids: {}
+    };
+    this.listeners = [];
+  }
 
-// REMOVEMOS A CLASSE MockFirebase. O backend agora é o Firebase!
-// ------------------------------------------------------------------
+  onValue(callback) {
+    this.listeners.push(callback);
+    callback(this.data);
+    return () => {
+      this.listeners = this.listeners.filter(l => l !== callback);
+    };
+  }
+
+  update(newData) {
+    this.data = { ...this.data, ...newData };
+    this.listeners.forEach(listener => listener(this.data));
+  }
+}
+
+const firebase = new MockFirebase();
 
 const App = () => {
   const [view, setView] = useState('login'); // login, participant, organizer
@@ -24,51 +42,31 @@ const App = () => {
     startingBid: 500
   });
 
-  // Função auxiliar para atualizar o Firebase de forma centralizada
-  const updateFirebaseData = (newData) => {
-    // Escreve os dados no nó raiz ('/') do Realtime Database
-    update(ref(db, '/'), newData)
-        .catch(error => console.error("Erro ao atualizar Firebase:", error));
-  };
-
-
-  // EFEITO 1: LEITURA DE DADOS EM TEMPO REAL (onValue)
   useEffect(() => {
-    // Referência ao nó principal onde as experiências serão guardadas
-    const experiencesRef = ref(db, '/');
-
-    // Assina as alterações em tempo real
-    const unsubscribe = onValue(experiencesRef, (snapshot) => {
-        const data = snapshot.val() || {};
-        // O nó principal agora será o objeto que contém 'experiences'
-        setExperiences(data.experiences || []); 
+    const unsubscribe = firebase.onValue((data) => {
+      setExperiences(data.experiences || []);
     });
-
-    // Limpa o listener quando o componente for desmontado
-    return () => unsubscribe();
+    return unsubscribe;
   }, []);
 
-  // EFEITO 2: TIMER PARA MUDANÇA AUTOMÁTICA DE STATUS
+  // Timer effect
   useEffect(() => {
     const interval = setInterval(() => {
       const now = Date.now();
       const updated = experiences.map(exp => {
-        // Apenas verifica se está ativo e o tempo expirou
-        if (exp.status === 'active' && exp.endTime && exp.endTime <= now) {
-          // O status é atualizado para 'ended'
+        if (exp.status === 'active' && exp.endTime <= now) {
           return { ...exp, status: 'ended' };
         }
         return exp;
       });
       
-      // Se houve mudança, atualiza o Firebase para persistir o novo status
       if (JSON.stringify(updated) !== JSON.stringify(experiences)) {
-        updateFirebaseData({ experiences: updated });
+        firebase.update({ experiences: updated });
       }
     }, 1000);
     
     return () => clearInterval(interval);
-  }, [experiences]); // Depende das experiências para reagir às mudanças de tempo
+  }, [experiences]);
 
   const handleLogin = (type) => {
     if (type === 'organizer') {
@@ -93,8 +91,7 @@ const App = () => {
       createdAt: Date.now()
     };
     
-    // ATUALIZAÇÃO REAL: Envia o novo array para o Firebase
-    updateFirebaseData({ experiences: [...experiences, exp] });
+    firebase.update({ experiences: [...experiences, exp] });
     setNewExp({ title: '', description: '', duration: 120, startingBid: 500 });
   };
 
@@ -102,55 +99,44 @@ const App = () => {
     const updated = experiences.map(exp => 
       exp.id === id ? { ...exp, status: 'active', endTime: Date.now() + exp.duration * 1000 } : exp
     );
-    // ATUALIZAÇÃO REAL
-    updateFirebaseData({ experiences: updated });
+    firebase.update({ experiences: updated });
   };
 
   const pauseExperience = (id) => {
     const updated = experiences.map(exp => 
       exp.id === id ? { ...exp, status: 'paused' } : exp
     );
-    // ATUALIZAÇÃO REAL
-    updateFirebaseData({ experiences: updated });
+    firebase.update({ experiences: updated });
   };
 
   const cancelExperience = (id) => {
     const updated = experiences.filter(exp => exp.id !== id);
-    // ATUALIZAÇÃO REAL
-    updateFirebaseData({ experiences: updated });
+    firebase.update({ experiences: updated });
   };
 
   const placeBid = (expId, amount) => {
-    const amountInt = parseInt(amount); // Garantir que é um número
-    
     const updated = experiences.map(exp => {
-      // Verifica se a experiência existe, está ativa e o lance é válido
-      if (exp.id === expId && amountInt > exp.currentBid && exp.status === 'active') {
+      if (exp.id === expId && amount > exp.currentBid && exp.status === 'active') {
         return {
           ...exp,
-          currentBid: amountInt,
-          leadingBidder: participantNumber // Usa o número do participante logado
+          currentBid: amount,
+          leadingBidder: participantNumber
         };
       }
       return exp;
     });
-    // ATUALIZAÇÃO REAL
-    updateFirebaseData({ experiences: updated });
+    firebase.update({ experiences: updated });
     setSelectedExp(null);
     setBidAmount('');
   };
 
   const getTimeRemaining = (exp) => {
-    if (exp.status !== 'active' || !exp.endTime) return null;
+    if (exp.status !== 'active') return null;
     const remaining = Math.max(0, exp.endTime - Date.now());
     const mins = Math.floor(remaining / 60000);
     const secs = Math.floor((remaining % 60000) / 1000);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
-
-  // ------------------------------------------------------------------
-  // O restante do código (as Views) permanece o mesmo e está abaixo.
-  // ------------------------------------------------------------------
 
   // LOGIN VIEW
   if (view === 'login') {
@@ -343,7 +329,7 @@ const App = () => {
                   Cancelar
                 </button>
                 <button
-                  onClick={() => placeBid(selectedExp.id, bidAmount)} // Passa 'bidAmount' como string, será convertido dentro de placeBid
+                  onClick={() => placeBid(selectedExp.id, parseInt(bidAmount))}
                   className="flex-1 bg-gradient-to-r from-pink-500 to-red-500 text-white py-3 rounded-xl font-semibold hover:shadow-lg"
                 >
                   Confirmar Lance
