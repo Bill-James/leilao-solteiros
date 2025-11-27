@@ -1,15 +1,24 @@
-import { initializeApp } from 'firebase/app';
-import { getDatabase } from 'firebase/database';
+// Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+import { getAnalytics } from "firebase/analytics";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
 
+// Your web app's Firebase configuration
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyDEYpuxtgQvLdoGNHjIp6v8R31cQXPfk70",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "leil-4af40.firebaseapp.com",
-  databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL || "https://leil-4af40-default-rtdb.firebaseio.com/",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "leil-4af40",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "leil-4af40.firebasestorage.app",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "779447652746",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:779447652746:web:1639d62e7ad4dcac6c33c6"
+  apiKey: "AIzaSyCjVULBQ65h8k8vfUcgoQ4gsIpSRLX17Pc",
+  authDomain: "leil-4af40.firebaseapp.com",
+  databaseURL: "https://leil-4af40-default-rtdb.firebaseio.com",
+  projectId: "leil-4af40",
+  storageBucket: "leil-4af40.firebasestorage.app",
+  messagingSenderId: "947172822818",
+  appId: "1:947172822818:web:f34c3dd6bec318f644df7b",
+  measurementId: "G-VD5GR6JM07"
 };
 
+// Initialize Firebase
 const app = initializeApp(firebaseConfig);
-export const db = getDatabase(app);
+const analytics = getAnalytics(app);
+
+export { app, analytics };
