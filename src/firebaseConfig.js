@@ -4,7 +4,7 @@ import { getDatabase } from 'firebase/database';
 const firebaseConfig = {
   apiKey: "AIzaSyDEYpuxtgQvLdoGNHjIp6v8R31cQXPfk70",
   authDomain: "leil-4af40.firebaseapp.com",
-  databaseURL: "https://leil-4af40-default-rtdb.firebaseio.com",
+  databaseURL: "https://leil-4af40-default-rtdb.firebaseio.com/",
   projectId: "leil-4af40",
   storageBucket: "leil-4af40.firebasestorage.app",
   messagingSenderId: "779447652746",
