@@ -1,40 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { Heart, Flame, Users, Clock, TrendingUp, Plus, Play, Pause, X, LogOut } from 'lucide-react';
-
-// Simulação de Firebase para demonstração
-class MockFirebase {
-  constructor() {
-    this.data = {
-      experiences: [],
-      bids: {}
-    };
-    this.listeners = [];
-  }
-
-  onValue(callback) {
-    this.listeners.push(callback);
-    callback(this.data);
-    return () => {
-      this.listeners = this.listeners.filter(l => l !== callback);
-    };
-  }
-
-  update(newData) {
-    this.data = { ...this.data, ...newData };
-    this.listeners.forEach(listener => listener(this.data));
-  }
-}
-
-const firebase = new MockFirebase();
+import { database } from './firebase';
+import { ref, onValue, set, push, remove, update } from 'firebase/database';
 
 const App = () => {
-  const [view, setView] = useState('login'); // login, participant, organizer
+  const [view, setView] = useState('login');
   const [participantNumber, setParticipantNumber] = useState('');
   const [experiences, setExperiences] = useState([]);
   const [selectedExp, setSelectedExp] = useState(null);
   const [bidAmount, setBidAmount] = useState('');
 
-  // Organizer states
   const [newExp, setNewExp] = useState({
     title: '',
     description: '',
@@ -42,27 +17,35 @@ const App = () => {
     startingBid: 500
   });
 
+  // Sincronizar com Firebase em tempo real
   useEffect(() => {
-    const unsubscribe = firebase.onValue((data) => {
-      setExperiences(data.experiences || []);
+    const experiencesRef = ref(database, 'experiences');
+    const unsubscribe = onValue(experiencesRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        const expArray = Object.entries(data).map(([key, value]) => ({
+          id: key,
+          ...value
+        }));
+        setExperiences(expArray);
+      } else {
+        setExperiences([]);
+      }
     });
-    return unsubscribe;
+
+    return () => unsubscribe();
   }, []);
 
-  // Timer effect
+  // Timer automático
   useEffect(() => {
     const interval = setInterval(() => {
       const now = Date.now();
-      const updated = experiences.map(exp => {
+      experiences.forEach(exp => {
         if (exp.status === 'active' && exp.endTime <= now) {
-          return { ...exp, status: 'ended' };
+          const expRef = ref(database, `experiences/${exp.id}`);
+          update(expRef, { status: 'ended' });
         }
-        return exp;
       });
-      
-      if (JSON.stringify(updated) !== JSON.stringify(experiences)) {
-        firebase.update({ experiences: updated });
-      }
     }, 1000);
     
     return () => clearInterval(interval);
@@ -81,53 +64,52 @@ const App = () => {
   const createExperience = () => {
     if (!newExp.title.trim()) return;
     
+    const experiencesRef = ref(database, 'experiences');
+    const newExpRef = push(experiencesRef);
+    
     const exp = {
-      id: Date.now(),
       ...newExp,
-      status: 'pending', // pending, active, paused, ended
+      status: 'pending',
       currentBid: newExp.startingBid,
       leadingBidder: null,
       endTime: null,
       createdAt: Date.now()
     };
     
-    firebase.update({ experiences: [...experiences, exp] });
+    set(newExpRef, exp);
     setNewExp({ title: '', description: '', duration: 120, startingBid: 500 });
   };
 
   const startExperience = (id) => {
-    const updated = experiences.map(exp => 
-      exp.id === id ? { ...exp, status: 'active', endTime: Date.now() + exp.duration * 1000 } : exp
-    );
-    firebase.update({ experiences: updated });
+    const expRef = ref(database, `experiences/${id}`);
+    const exp = experiences.find(e => e.id === id);
+    update(expRef, { 
+      status: 'active', 
+      endTime: Date.now() + exp.duration * 1000 
+    });
   };
 
   const pauseExperience = (id) => {
-    const updated = experiences.map(exp => 
-      exp.id === id ? { ...exp, status: 'paused' } : exp
-    );
-    firebase.update({ experiences: updated });
+    const expRef = ref(database, `experiences/${id}`);
+    update(expRef, { status: 'paused' });
   };
 
   const cancelExperience = (id) => {
-    const updated = experiences.filter(exp => exp.id !== id);
-    firebase.update({ experiences: updated });
+    const expRef = ref(database, `experiences/${id}`);
+    remove(expRef);
   };
 
   const placeBid = (expId, amount) => {
-    const updated = experiences.map(exp => {
-      if (exp.id === expId && amount > exp.currentBid && exp.status === 'active') {
-        return {
-          ...exp,
-          currentBid: amount,
-          leadingBidder: participantNumber
-        };
-      }
-      return exp;
-    });
-    firebase.update({ experiences: updated });
-    setSelectedExp(null);
-    setBidAmount('');
+    const exp = experiences.find(e => e.id === expId);
+    if (amount > exp.currentBid && exp.status === 'active') {
+      const expRef = ref(database, `experiences/${expId}`);
+      update(expRef, {
+        currentBid: amount,
+        leadingBidder: participantNumber
+      });
+      setSelectedExp(null);
+      setBidAmount('');
+    }
   };
 
   const getTimeRemaining = (exp) => {
@@ -169,7 +151,8 @@ const App = () => {
 
             <button
               onClick={() => handleLogin('participant')}
-              className="w-full bg-gradient-to-r from-pink-500 to-red-500 text-white py-4 rounded-xl font-semibold text-lg hover:shadow-lg transition-all flex items-center justify-center gap-2"
+              disabled={!participantNumber.trim()}
+              className="w-full bg-gradient-to-r from-pink-500 to-red-500 text-white py-4 rounded-xl font-semibold text-lg hover:shadow-lg transition-all flex items-center justify-center gap-2 disabled:opacity-50"
             >
               <Users className="w-5 h-5" />
               Entrar como Participante
@@ -230,10 +213,7 @@ const App = () => {
             )}
 
             {experiences.map(exp => (
-              <div
-                key={exp.id}
-                className="bg-white rounded-2xl shadow-xl overflow-hidden"
-              >
+              <div key={exp.id} className="bg-white rounded-2xl shadow-xl overflow-hidden">
                 <div className="bg-gradient-to-r from-pink-500 to-red-500 p-4">
                   <h3 className="text-white font-bold text-xl">{exp.title}</h3>
                   <p className="text-white/90 text-sm mt-1">{exp.description}</p>
@@ -303,7 +283,6 @@ const App = () => {
           </div>
         </div>
 
-        {/* Modal de Lance */}
         {selectedExp && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-2xl p-6 max-w-md w-full">
@@ -368,7 +347,6 @@ const App = () => {
         </div>
 
         <div className="grid md:grid-cols-2 gap-6">
-          {/* Criar Nova Experiência */}
           <div className="bg-white rounded-2xl shadow-lg p-6">
             <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
               <Plus className="w-5 h-5" />
@@ -421,7 +399,6 @@ const App = () => {
             </div>
           </div>
 
-          {/* Lista de Experiências */}
           <div className="bg-white rounded-2xl shadow-lg p-6">
             <h2 className="text-xl font-bold mb-4">Experiências Ativas</h2>
             <div className="space-y-3 max-h-96 overflow-y-auto">
